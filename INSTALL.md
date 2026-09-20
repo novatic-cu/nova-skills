@@ -1,53 +1,68 @@
-# 📋 Guía de Instalación y Comandos
+# 📋 Guía de instalación y comandos
+
+## Requisitos
+
+- Node.js `>= 20`
+- OpenCode (global: `~/.config/opencode` · local: `./.opencode`)
 
 ## Instalación completa
 
 ```bash
-npx @nexusdevelop/mskills
+npx @novatic/skills
 ```
 
-Pregunta si deseas instalación global o local.
-
-## Instalación específica de agente
+Pregunta si quieres instalación **global** o **local**. Para saltar la pregunta:
 
 ```bash
-npx @nexusdevelop/mskills agent backend
+npx @novatic/skills --global --yes
+npx @novatic/skills --local  --yes
 ```
 
-Instala el agente y sus skills (carpetas `/SKILL.md`) automáticamente.
-
-## Instalación específica de skill
+## Instalación de un agente
 
 ```bash
-npx @nexusdevelop/mskills skill nest-mastery
+npx @novatic/skills agent backend
 ```
 
-Solo descarga la carpeta `/SKILL.md` de la skill.
+Instala el agente en `opencode.json` **y** las skills que permite.
 
-## Desinstalación completa
+## Instalación de una skill
 
 ```bash
-npx @nexusdevelop/mskills uninstall
+npx @novatic/skills skill nest-mastery
 ```
 
-Borra todo rastro de mskills.
+Copia la carpeta completa de la skill (`SKILL.md` + `scripts/`, `references/`, …)
+a `skills/<nombre>/`.
 
-## Desinstalación de agente
+## Desinstalación
 
 ```bash
-npx @nexusdevelop/mskills uninstall agent backend
+npx @novatic/skills uninstall                     # todo
+npx @novatic/skills uninstall agent backend       # un agente + skills huérfanas
+npx @novatic/skills uninstall skill nest-mastery  # una skill (si nadie la usa)
 ```
 
-Borra el agente y las skills huérfanas que no use otro agente.
+- `uninstall skill` **se niega** si algún agente de la config usa esa skill.
+- `uninstall agent` borra después las skills que ya no usa ningún otro agente.
 
-## Desinstalación de skill
+## Qué toca en disco
 
-```bash
-npx @nexusdevelop/mskills uninstall skill nest-mastery
-```
+| Ámbito | Skills | Config | Manifiesto |
+|---|---|---|---|
+| global | `~/.config/opencode/skills/<nombre>/` | `~/.config/opencode/opencode.json` | `~/.config/opencode/.nova-skills.json` |
+| local | `./.opencode/skills/<nombre>/` | `./opencode.json` | `./.opencode/.nova-skills.json` |
 
-Prohíbe borrar si un agente la usa.
+## Seguridad
+
+- Antes de escribir `opencode.json` hace **backup** (`opencode.json.bak-<fecha>`).
+- Si tu `opencode.json` no es JSON válido, **aborta** con un mensaje; nunca lo
+  recrea ni lo vacía.
+- Solo modifica la clave `agent`; el resto de tu config (tema, MCP, permisos
+  globales, `default_agent`, `instructions`…) queda intacta.
+- `--force` sobrescribe skills/agentes preexistentes que no instaló el paquete.
 
 ## Ejemplos de uso
 
-Seleccionar agente con Tab en OpenCode y dar la orden.
+Selecciona `plan` o `build` con **Tab** en OpenCode, o invoca un subagente con
+`@backend`, `@frontend`, `@dba`, `@devops`, `@marketing`.

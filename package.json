@@ -1,17 +1,17 @@
 {
-  "name": "@nexusdevelop/mskills",
-  "version": "1.0.0",
-  "description": "Potencia OpenCode con Skills y Agentes especializados para desarrollo Full Stack, Arquitectura de Software, DevOps, IA y Marketing.",
-  "author": "Nexus Develop",
+  "name": "@novatic/skills",
+  "version": "2.0.0",
+  "description": "56 skills y 7 agentes especializados para OpenCode: full-stack, arquitectura, DBA, DevOps, IA y marketing.",
+  "author": "Novatic",
   "license": "GPL-3.0-or-later",
 
-  "homepage": "https://github.com/Nexus-Develop-Company/mskils",
+  "homepage": "https://github.com/novatic-cu/nova-skills",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Nexus-Develop-Company/mskils.git"
+    "url": "git+https://github.com/novatic-cu/nova-skills.git"
   },
   "bugs": {
-    "url": "https://github.com/Nexus-Develop-Company/mskils/issues"
+    "url": "https://github.com/novatic-cu/nova-skills/issues"
   },
 
   "keywords": [
@@ -38,7 +38,7 @@
   "main": "./dist/cli.js",
 
   "bin": {
-    "mskills": "./dist/cli.js"
+    "nova-skills": "./dist/cli.js"
   },
 
   "files": [
@@ -60,6 +60,10 @@
     "@types/node": "^25.7.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
+  },
+
+  "publishConfig": {
+    "access": "public"
   },
 
   "packageManager": "pnpm@12.4.2"
