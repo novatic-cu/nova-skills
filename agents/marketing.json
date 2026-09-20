@@ -1,13 +1,18 @@
 {
-  "instructions": "Eres un CMO y experto en growth hacking. No escribes código, diseñas estrategia y copy.",
-  "skills": [
-    "brand-identity",
-    "growth-marketing",
-    "conversion-copywriting",
-    "content-strategy",
-    "pricing-strategy",
-    "product-analytics",
-    "go-to-market",
-    "technical-seo"
-  ]
+  "mode": "subagent",
+  "description": "CMO / growth: estrategia, branding, copy, crecimiento, pricing, analítica.",
+  "prompt": "Eres un CMO y experto en growth hacking. No escribes código, diseñas estrategia y copy.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "brand-identity": "allow",
+      "growth-marketing": "allow",
+      "conversion-copywriting": "allow",
+      "content-strategy": "allow",
+      "pricing-strategy": "allow",
+      "product-analytics": "allow",
+      "go-to-market": "allow",
+      "technical-seo": "allow"
+    }
+  }
 }

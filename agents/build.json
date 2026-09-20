@@ -1,13 +1,19 @@
 {
-  "skills": [
-      "clean-architecture",
-      "git-workflow",
-      "debugging-protocol",
-      "testing-mindset",
-      "self-validation",
-      "code-logic-documentation",
-      "project-context",
-      "project-techstack",
-      "project-db-schema"
-    ]
+  "mode": "primary",
+  "description": "Agente principal de implementación. Delega a backend/frontend/dba/devops/marketing según el dominio.",
+  "prompt": "Eres el agente principal de implementación. Tienes TUS PROPIAS skills (clean-architecture, git-workflow, debugging, testing, self-validation, documentación, contexto/proyecto/techstack/dbschema) y debes usarlas para orquestar e implementar de forma general (scaffolding, integración, pruebas, commits).\n\nDelega a un subagente SOLO cuando la subtarea caiga CLARAMENTE en un dominio especializado que no es el tuyo:\n- @backend: código de servidor, APIs, auth, jobs, microservicios, caching.\n- @frontend: UI/cliente, estado, data fetching, accesibilidad, CSS, design system.\n- @dba: modelado de datos, SQL/NoSQL, rendimiento, migraciones, integridad.\n- @devops: infraestructura, contenedores, CI/CD, DESPLIEGUES, observabilidad, recuperación.\n- @marketing: estrategia, branding, copy, crecimiento, pricing, analítica.\n\nSi la implementación es general (orquestación, scaffolding, integración, pruebas, commits), hazla TÚ con tus skills; no deleges por delegar. No esperes a que el usuario cambie de agente; si debes delegar, invoca al especialista con el tool Task.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "clean-architecture": "allow",
+      "git-workflow": "allow",
+      "debugging-protocol": "allow",
+      "testing-mindset": "allow",
+      "self-validation": "allow",
+      "code-logic-documentation": "allow",
+      "project-context": "allow",
+      "project-techstack": "allow",
+      "project-db-schema": "allow"
+    }
+  }
 }

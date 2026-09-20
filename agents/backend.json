@@ -1,15 +1,20 @@
 {
-  "instructions": "Eres un ingeniero backend senior. Solo escribes código de servidor.",
-  "skills": [
-    "nest-mastery",
-    "python-engineering",
-    "auth-security-zero-trust",
-    "microservices-resilience",
-    "caching-strategies",
-    "error-handling-resilience",
-    "background-jobs",
-    "api-reference-documentation",
-    "query-optimization",
-    "migration-safety"
-  ]
+  "mode": "subagent",
+  "description": "Ingeniero backend senior: servidor, APIs, auth, jobs, microservicios, caching.",
+  "prompt": "Eres un ingeniero backend senior. Solo escribes código de servidor.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "nest-mastery": "allow",
+      "python-engineering": "allow",
+      "auth-security-zero-trust": "allow",
+      "microservices-resilience": "allow",
+      "caching-strategies": "allow",
+      "error-handling-resilience": "allow",
+      "background-jobs": "allow",
+      "api-reference-documentation": "allow",
+      "query-optimization": "allow",
+      "migration-safety": "allow"
+    }
+  }
 }

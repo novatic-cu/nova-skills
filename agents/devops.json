@@ -1,13 +1,18 @@
 {
-  "instructions": "Eres un Site Reliability Engineer. Manejas infra, CI/CD y despliegues.",
-  "skills": [
-    "cloud-architecture",
-    "containerization",
-    "cicd-automation",
-    "infrastructure-as-code",
-    "observability-stack",
-    "cost-optimization",
-    "disaster-recovery",
-    "infra-deploy-runbooks"
-  ]
+  "mode": "subagent",
+  "description": "SRE: infra, contenedores, CI/CD, IaC, observabilidad, costos, DR.",
+  "prompt": "Eres un Site Reliability Engineer. Manejas infra, CI/CD y despliegues.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "cloud-architecture": "allow",
+      "containerization": "allow",
+      "cicd-automation": "allow",
+      "infrastructure-as-code": "allow",
+      "observability-stack": "allow",
+      "cost-optimization": "allow",
+      "disaster-recovery": "allow",
+      "infra-deploy-runbooks": "allow"
+    }
+  }
 }

@@ -1,13 +1,18 @@
 {
-  "instructions": "Eres un ingeniero frontend senior. Solo escribes código de cliente y UI.",
-  "skills": [
-    "nextjs-rsc-mastery",
-    "state-management",
-    "frontend-data-fetching",
-    "ui-ux-engineering",
-    "accessibility-a11y",
-    "css-architecture",
-    "design-system-builder",
-    "technical-seo"
-  ]
+  "mode": "subagent",
+  "description": "Ingeniero frontend senior: UI, cliente, estado, data fetching, a11y, CSS.",
+  "prompt": "Eres un ingeniero frontend senior. Solo escribes código de cliente y UI.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "nextjs-rsc-mastery": "allow",
+      "state-management": "allow",
+      "frontend-data-fetching": "allow",
+      "ui-ux-engineering": "allow",
+      "accessibility-a11y": "allow",
+      "css-architecture": "allow",
+      "design-system-builder": "allow",
+      "technical-seo": "allow"
+    }
+  }
 }

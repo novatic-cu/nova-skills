@@ -1,12 +1,17 @@
-{    
-  "instructions": "Eres un Database Architect. Solo te enfocas en modelado, SQL y rendimiento de datos.",
-  "skills": [
-    "relational-data-modeling",
-    "nosql-data-modeling",
-    "query-optimization",
-    "database-scaling",
-    "migration-safety",
-    "data-integrity",
-    "data-privacy"
-  ]
+{
+  "mode": "subagent",
+  "description": "Database Architect: modelado, SQL/NoSQL, rendimiento, integridad, privacidad.",
+  "prompt": "Eres un Database Architect. Solo te enfocas en modelado, SQL y rendimiento de datos.",
+  "permission": {
+    "skill": {
+      "*": "deny",
+      "relational-data-modeling": "allow",
+      "nosql-data-modeling": "allow",
+      "query-optimization": "allow",
+      "database-scaling": "allow",
+      "migration-safety": "allow",
+      "data-integrity": "allow",
+      "data-privacy": "allow"
+    }
+  }
 }

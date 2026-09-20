@@ -1,322 +1,322 @@
 #!/usr/bin/env node
+import fs from 'node:fs'
+import path from 'node:path'
+import readline from 'node:readline'
+import { PACKAGE_ROOT, resolveScopePaths } from './lib/paths'
+import {
+  addUnique,
+  emptyManifest,
+  readManifest,
+  removeItems,
+  writeManifest,
+} from './lib/manifest'
+import { copySkill, listAvailableSkills, removeSkill, skillExists } from './lib/skills'
+import {
+  listAvailableAgents,
+  mergeAgent,
+  readAgentFragment,
+  removeAgent,
+  skillsUsedByAgent,
+  skillsUsedByAgents,
+} from './lib/agents'
+import { loadConfig, saveConfig } from './lib/config'
+import type { Manifest, Scope, ScopePaths } from './lib/types'
 
-import fs from 'fs';
-import path from 'path';
-import readline from 'readline';
-import os from 'os';
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')
+) as { name: string; version: string }
 
-// Interfaces para tipado estricto
-interface AgentData {
-  instructions?: string;
-  skills?: string[];
+interface CliOptions {
+  scope?: Scope
+  yes: boolean
+  force: boolean
 }
 
-interface OpenCodeConfig {
-  "$schema"?: string;
-  agent?: Record<string, AgentData>;
+// ── Entrada interactiva (solo se crea si hace falta) ────────────────────────
+let rl: readline.Interface | null = null
+function question(query: string): Promise<string> {
+  if (!rl) rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise((resolve) => rl!.question(query, resolve))
+}
+function closeRl(): void {
+  if (rl) {
+    rl.close()
+    rl = null
+  }
 }
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const prompt = (query: string): Promise<string> => new Promise((resolve) => rl.question(query, resolve));
+// ── Argumentos ──────────────────────────────────────────────────────────────
+function parseArgs(argv: string[]): { flags: Set<string>; positional: string[] } {
+  const flags = new Set<string>()
+  const positional: string[] = []
+  for (const arg of argv) {
+    if (arg.startsWith('-')) flags.add(arg)
+    else positional.push(arg)
+  }
+  return { flags, positional }
+}
 
-// Rutas dinámicas según SO
-const isWindows = process.platform === 'win32';
-const globalConfigDir = isWindows ? path.join(process.env.APPDATA || '', 'opencode') : path.join(os.homedir(), '.config', 'opencode');
-const localConfigDir = path.join(process.cwd(), '.opencode');
+function printHelp(): void {
+  console.log(`
+${pkg.name} v${pkg.version} — Skills y agentes para OpenCode
 
-const skillsSourceDir = path.join(__dirname, '..', 'skills');
-const agentsSourceDir = path.join(__dirname, '..', 'agents');
-const baseConfigFile = path.join(__dirname, '..', 'base.json');
-const PREFIX = 'mskills-';
+Uso:
+  npx ${pkg.name} [comando] [flags]
 
-async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0];
-  const subCommand = args[1];
-  const target = args[2];
+Comandos:
+  (sin comando)              Instala TODAS las skills y agentes
+  skill <nombre>             Instala una skill
+  agent <nombre>             Instala un agente (y las skills que permite)
+  uninstall                  Desinstala todo lo instalado por este paquete
+  uninstall agent <nombre>   Desinstala un agente (y sus skills huérfanas)
+  uninstall skill <nombre>   Desinstala una skill (si ningún agente la usa)
 
-  console.log('\n🚀 MSKILLS - Dopando tu OpenCode...\n');
+Flags:
+  --global                   Ámbito global (~/.config/opencode)
+  --local                    Ámbito local (./.opencode + ./opencode.json)
+  --yes, -y                  Sin preguntas (ámbito global por defecto)
+  --force                    Sobrescribe skills/agentes que no instaló este paquete
+  --help, -h                 Esta ayuda
+  --version, -v              Versión
 
-  if (command === 'agent') {
-    if (!subCommand) console.log('❌ Debes especificar el agente. Ejemplo: npx mskills agent backend');
-    else await installAgent(subCommand);
-  } else if (command === 'skill') {
-    if (!subCommand) console.log('❌ Debes especificar la skill. Ejemplo: npx mskills skill nest-mastery');
-    else await installSingleSkill(subCommand);
-  } else if (command === 'uninstall') {
-    await handleUninstall(subCommand, target);
-  } else {
-    await installAll();
+Ejemplos:
+  npx ${pkg.name}                      # todo, pregunta ámbito
+  npx ${pkg.name} agent backend --global
+  npx ${pkg.name} uninstall --global
+`)
+}
+
+// ── Ámbito ──────────────────────────────────────────────────────────────────
+async function askScope(opts: CliOptions): Promise<Scope> {
+  if (opts.scope) return opts.scope
+  if (opts.yes) return 'global'
+  const answer = (await question('¿Dónde quieres operar? (global / local): ')).trim().toLowerCase()
+  return answer === 'local' ? 'local' : 'global'
+}
+
+// ── Instalación ─────────────────────────────────────────────────────────────
+function skillsDirFor(paths: ScopePaths): string {
+  return paths.skillsDir
+}
+
+function installSkillInto(
+  name: string,
+  paths: ScopePaths,
+  manifest: Manifest,
+  opts: CliOptions
+): 'installed' | 'skipped' {
+  const dest = path.join(skillsDirFor(paths), name)
+  const ours = manifest.skills.includes(name)
+  if (fs.existsSync(dest) && !ours && !opts.force) return 'skipped'
+  copySkill(name, skillsDirFor(paths))
+  manifest.skills = addUnique(manifest.skills, [name])
+  return 'installed'
+}
+
+async function installAll(paths: ScopePaths, opts: CliOptions): Promise<void> {
+  const manifest = readManifest(paths.manifestFile)
+  let config = loadConfig(paths.configFile)
+
+  const installedSkills: string[] = []
+  const skippedSkills: string[] = []
+  for (const name of listAvailableSkills()) {
+    if (installSkillInto(name, paths, manifest, opts) === 'installed') installedSkills.push(name)
+    else skippedSkills.push(name)
   }
 
-  rl.close();
-}
-
-async function askScope(): Promise<'global' | 'local'> {
-  const scope = await prompt('¿Dónde quieres operar? (global / local): ');
-  return scope.toLowerCase() === 'local' ? 'local' : 'global';
-}
-
-function getConfigPath(scope: 'global' | 'local'): string {
-  return scope === 'global' ? path.join(globalConfigDir, 'opencode.json') : path.join(process.cwd(), 'opencode.json');
-}
-
-function getSkillsDestDir(scope: 'global' | 'local'): string {
-  return scope === 'global' ? path.join(globalConfigDir, 'skills') : path.join(localConfigDir, 'skills');
-}
-
-function ensurePrefixOnSkills(agentData: AgentData): AgentData {
-  if (agentData.skills) {
-    agentData.skills = agentData.skills.map(skill => skill.startsWith(PREFIX) ? skill : `${PREFIX}${skill}`);
+  const installedAgents: string[] = []
+  const skippedAgents: string[] = []
+  for (const name of listAvailableAgents()) {
+    const exists = Boolean(config.agent?.[name])
+    const ours = manifest.agents.includes(name)
+    if (exists && !ours && !opts.force) {
+      skippedAgents.push(name)
+      continue
+    }
+    config = mergeAgent(config, name, readAgentFragment(name))
+    manifest.agents = addUnique(manifest.agents, [name])
+    installedAgents.push(name)
   }
-  return agentData;
+
+  saveConfig(paths.configFile, config)
+  manifest.installedAt = new Date().toISOString()
+  writeManifest(paths.manifestFile, manifest)
+
+  console.log(`\n✅ ${installedSkills.length} skills instaladas en ${paths.scope} (${paths.skillsDir}).`)
+  if (skippedSkills.length) {
+    console.log(`ℹ️  ${skippedSkills.length} skills omitidas (ya existían y no las instaló este paquete): ${skippedSkills.join(', ')}`)
+  }
+  console.log(`✅ ${installedAgents.length} agentes configurados en ${paths.configFile}.`)
+  if (skippedAgents.length) {
+    console.log(`ℹ️  ${skippedAgents.length} agentes omitidos (ya existían): ${skippedAgents.join(', ')}`)
+  }
+  console.log('\n🔥 Listo. Reinicia OpenCode si estaba abierto.\n')
 }
 
-function getOrCreateConfig(configFile: string): OpenCodeConfig {
+async function installOneSkill(paths: ScopePaths, name: string, opts: CliOptions): Promise<void> {
+  if (!skillExists(name)) {
+    console.log(`❌ Skill "${name}" no encontrada en el paquete.`)
+    return
+  }
+  const manifest = readManifest(paths.manifestFile)
+  const result = installSkillInto(name, paths, manifest, opts)
+  if (result === 'skipped') {
+    console.log(`ℹ️  La skill "${name}" ya existe y no fue instalada por este paquete. Usa --force para sobrescribir.`)
+    return
+  }
+  writeManifest(paths.manifestFile, manifest)
+  console.log(`✅ Skill "${name}" instalada en ${paths.scope}: ${path.join(paths.skillsDir, name)}`)
+}
+
+async function installOneAgent(paths: ScopePaths, name: string, opts: CliOptions): Promise<void> {
+  let fragment
   try {
-    if (fs.existsSync(configFile)) return JSON.parse(fs.readFileSync(configFile, 'utf8'));
-  } catch (error) {
-    console.log('⚠️ Tu opencode.json estaba malformado. Se recreará la base.');
-  }
-  if (fs.existsSync(baseConfigFile)) return JSON.parse(fs.readFileSync(baseConfigFile, 'utf8'));
-  return { "$schema": "https://opencode.ai/config.json", "agent": {} };
-}
-
-function saveConfigSafely(configFile: string, config: OpenCodeConfig): void {
-  fs.mkdirSync(path.dirname(configFile), { recursive: true });
-  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-}
-
-// OBTENER SKILLS USADAS POR AGENTES MSKILLS (Excluyendo uno opcionalmente)
-function getUsedMskillsSkills(config: OpenCodeConfig, excludeAgentName?: string): Set<string> {
-  const usedSkills = new Set<string>();
-  if (config.agent) {
-    for (const [agentKey, agentData] of Object.entries(config.agent)) {
-      if (agentKey.startsWith(PREFIX) && agentKey !== excludeAgentName && agentData.skills) {
-        agentData.skills.forEach(skill => usedSkills.add(skill));
-      }
-    }
-  }
-  return usedSkills;
-}
-
-// ==========================================
-// FUNCIONES DE INSTALACIÓN
-// ==========================================
-
-async function installSingleSkill(skillName: string) {
-  const scope = await askScope();
-  const destDir = getSkillsDestDir(scope);
-  const sourceSkillDir = path.join(skillsSourceDir, skillName);
-  const sourceSkillFile = path.join(sourceSkillDir, 'SKILL.md');
-  if (!fs.existsSync(sourceSkillFile)) {
-    console.log(`❌ Skill "${skillName}" no encontrada en el repositorio.`);
-    return;
-  }
-  fs.mkdirSync(destDir, { recursive: true });
-  const finalSkillDir = path.join(destDir, `${PREFIX}${skillName}`);
-  fs.mkdirSync(finalSkillDir, { recursive: true });
-  fs.copyFileSync(sourceSkillFile, path.join(finalSkillDir, 'SKILL.md'));
-  console.log(`✅ Skill instalada en ${scope}: ${PREFIX}${skillName}/SKILL.md`);
-}
-
-async function installAgent(agentName: string) {
-  const scope = await askScope();
-  const configFile = getConfigPath(scope);
-  const agentFile = path.join(agentsSourceDir, `${agentName}.json`);
-  if (!fs.existsSync(agentFile)) {
-    console.log(`❌ Agente "${agentName}" no encontrado en el repositorio.`);
-    return;
+    fragment = readAgentFragment(name)
+  } catch {
+    console.log(`❌ Agente "${name}" no encontrado en el paquete.`)
+    return
   }
 
-  let agentFragment: AgentData = JSON.parse(fs.readFileSync(agentFile, 'utf8'));
-  agentFragment = ensurePrefixOnSkills(agentFragment);
+  const config = loadConfig(paths.configFile)
+  const manifest = readManifest(paths.manifestFile)
 
-  let config = getOrCreateConfig(configFile);
-  // Fix TS: Extraemos con fallback y reasignamos al final
-  const agentObj = config.agent || {}; 
+  if (config.agent?.[name] && !manifest.agents.includes(name) && !opts.force) {
+    console.log(`ℹ️  El agente "${name}" ya existe y no fue instalado por este paquete. Usa --force para sobrescribir.`)
+    return
+  }
 
-  const finalAgentName = `${PREFIX}${agentName}`;
-  agentObj[finalAgentName] = agentFragment;
-  config.agent = agentObj; // Reasignación segura
-  
-  saveConfigSafely(configFile, config);
-  console.log(`✅ Agente "${finalAgentName}" configurado en ${scope}.`);
+  saveConfig(paths.configFile, mergeAgent(config, name, fragment))
+  manifest.agents = addUnique(manifest.agents, [name])
 
-  if (agentFragment.skills && agentFragment.skills.length > 0) {
-    const destSkillsDir = getSkillsDestDir(scope);
-    fs.mkdirSync(destSkillsDir, { recursive: true });
-    agentFragment.skills.forEach(prefixedSkillName => {
-      const originalSkillName = prefixedSkillName.replace(PREFIX, '');
-      const sourceSkillDir = path.join(skillsSourceDir, originalSkillName);
-      const sourceSkillFile = path.join(sourceSkillDir, 'SKILL.md');
-      if (fs.existsSync(sourceSkillFile)) {
-        const finalSkillDir = path.join(destSkillsDir, `${PREFIX}${originalSkillName}`);
-        fs.mkdirSync(finalSkillDir, { recursive: true });
-        fs.copyFileSync(sourceSkillFile, path.join(finalSkillDir, 'SKILL.md'));
-      }
-    });
+  const installedSkills: string[] = []
+  for (const skill of skillsUsedByAgent(fragment)) {
+    if (!skillExists(skill)) continue
+    if (installSkillInto(skill, paths, manifest, opts) === 'installed') installedSkills.push(skill)
+  }
+
+  manifest.installedAt = new Date().toISOString()
+  writeManifest(paths.manifestFile, manifest)
+
+  console.log(`✅ Agente "${name}" configurado en ${paths.scope}.`)
+  if (installedSkills.length) {
+    console.log(`✅ Skills del agente instaladas: ${installedSkills.join(', ')}`)
   }
 }
 
-async function installAll() {
-  const scope = await askScope();
-  const destSkillsDir = getSkillsDestDir(scope);
-  const configFile = getConfigPath(scope);
-
-  fs.mkdirSync(destSkillsDir, { recursive: true });
-  const skillFolders = fs.readdirSync(skillsSourceDir).filter((f: string) => {
-    return fs.statSync(path.join(skillsSourceDir, f)).isDirectory();
-  });
-  skillFolders.forEach((folder: string) => {
-    const sourceSkillFile = path.join(skillsSourceDir, folder, 'SKILL.md');
-    if (fs.existsSync(sourceSkillFile)) {
-      const destSkillDir = path.join(destSkillsDir, `${PREFIX}${folder}`);
-      fs.mkdirSync(destSkillDir, { recursive: true });
-      fs.copyFileSync(sourceSkillFile, path.join(destSkillDir, 'SKILL.md'));
-    }
-  });
-  console.log(`✅ ${skillFolders.length} Skills instaladas en ${scope} (con prefijo ${PREFIX}).`);
-
-  let config = getOrCreateConfig(configFile);
-  // Fix TS: Extraemos con fallback y reasignamos al final
-  const agentObj = config.agent || {};
-  const agents = fs.readdirSync(agentsSourceDir).filter((f: string) => f.endsWith('.json'));
-
-  agents.forEach((file: string) => {
-    const agentName = file.replace('.json', '');
-    let agentFragment: AgentData = JSON.parse(fs.readFileSync(path.join(agentsSourceDir, file), 'utf8'));
-    agentFragment = ensurePrefixOnSkills(agentFragment);
-    agentObj[`${PREFIX}${agentName}`] = agentFragment;
-  });
-
-  config.agent = agentObj; // Reasignación segura
-
-  saveConfigSafely(configFile, config);
-  console.log(`✅ ${agents.length} Agentes configurados en ${scope} (con prefijo ${PREFIX}).`);
-  console.log('\n🔥 ¡OpenCode dopado al máximo! Reinicia tu terminal si estaba abierta.\n');
+// ── Desinstalación ──────────────────────────────────────────────────────────
+function skillsUsedByAnyAgent(config: ReturnType<typeof loadConfig>): Set<string> {
+  return new Set(skillsUsedByAgents(config, Object.keys(config.agent ?? {})))
 }
 
-// ==========================================
-// FUNCIONES DE DESINSTALACIÓN
-// ==========================================
+async function uninstallAll(paths: ScopePaths): Promise<void> {
+  const manifest = readManifest(paths.manifestFile)
+  let config = loadConfig(paths.configFile)
 
-async function handleUninstall(subCommand?: string, target?: string) {
-  if (!subCommand || subCommand === 'all') {
-    await uninstallAll();
-  } else if (subCommand === 'agent') {
-    if (!target) console.log('❌ Especifica el agente. Ejemplo: npx mskills uninstall agent backend');
-    else await uninstallAgent(target);
-  } else if (subCommand === 'skill') {
-    if (!target) console.log('❌ Especifica la skill. Ejemplo: npx mskills uninstall skill nest-mastery');
-    else await uninstallSkill(target);
+  let removedSkills = 0
+  for (const skill of manifest.skills) {
+    if (removeSkill(skill, paths.skillsDir)) removedSkills += 1
+  }
+
+  for (const agent of manifest.agents) config = removeAgent(config, agent)
+  saveConfig(paths.configFile, config)
+  writeManifest(paths.manifestFile, emptyManifest())
+
+  console.log(`\n🧹 ${removedSkills} skills eliminadas de ${paths.skillsDir}.`)
+  console.log(`🧹 ${manifest.agents.length} agentes eliminados de ${paths.configFile}.\n`)
+}
+
+async function uninstallOneAgent(paths: ScopePaths, name: string): Promise<void> {
+  const manifest = readManifest(paths.manifestFile)
+  let config = loadConfig(paths.configFile)
+
+  if (!config.agent?.[name]) {
+    console.log(`❌ El agente "${name}" no existe en ${paths.configFile}.`)
+    return
+  }
+
+  config = removeAgent(config, name)
+  saveConfig(paths.configFile, config)
+
+  // Huérfanas: skills del manifiesto que ya no usa NINGÚN agente de la config.
+  const stillUsed = skillsUsedByAnyAgent(config)
+  const orphans = manifest.skills.filter((skill) => !stillUsed.has(skill))
+  let removed = 0
+  for (const skill of orphans) {
+    if (removeSkill(skill, paths.skillsDir)) removed += 1
+  }
+  manifest.skills = removeItems(manifest.skills, orphans)
+  manifest.agents = removeItems(manifest.agents, [name])
+  writeManifest(paths.manifestFile, manifest)
+
+  console.log(`✅ Agente "${name}" eliminado.`)
+  if (removed) console.log(`✅ ${removed} skills huérfanas eliminadas.`)
+}
+
+async function uninstallOneSkill(paths: ScopePaths, name: string): Promise<void> {
+  const config = loadConfig(paths.configFile)
+  if (skillsUsedByAnyAgent(config).has(name)) {
+    console.log(`❌ La skill "${name}" está en uso por uno o más agentes. Elimina primero esos agentes.`)
+    return
+  }
+
+  const manifest = readManifest(paths.manifestFile)
+  if (removeSkill(name, paths.skillsDir)) {
+    manifest.skills = removeItems(manifest.skills, [name])
+    writeManifest(paths.manifestFile, manifest)
+    console.log(`✅ Skill "${name}" eliminada.`)
   } else {
-    console.log('❌ Comando no reconocido. Usa: uninstall [all | agent <nombre> | skill <nombre>]');
+    console.log(`❌ La skill "${name}" no existe en ${paths.skillsDir}.`)
   }
 }
 
-async function uninstallAll() {
-  const scope = await askScope();
-  const configFile = getConfigPath(scope);
-  const destSkillsDir = getSkillsDestDir(scope);
+// ── Main ────────────────────────────────────────────────────────────────────
+async function main(): Promise<void> {
+  const { flags, positional } = parseArgs(process.argv.slice(2))
 
-  console.log(`\n🗑️ Eliminando TODOS los MSKILLS de tu configuración ${scope}...\n`);
-
-  if (fs.existsSync(destSkillsDir)) {
-    const folders = fs.readdirSync(destSkillsDir).filter((f: string) => f.startsWith(PREFIX) && fs.statSync(path.join(destSkillsDir, f)).isDirectory());
-    folders.forEach((folder: string) => {
-      fs.rmSync(path.join(destSkillsDir, folder), { recursive: true, force: true });
-    });
-    console.log(`✅ ${folders.length} Skills con prefijo ${PREFIX} eliminadas.`);
+  if (flags.has('--help') || flags.has('-h')) return printHelp()
+  if (flags.has('--version') || flags.has('-v')) {
+    console.log(pkg.version)
+    return
   }
 
-  if (fs.existsSync(configFile)) {
-    let config: OpenCodeConfig = getOrCreateConfig(configFile);
-    // Fix TS: Extraemos con fallback para que TS no se queje dentro de los callbacks
-    const agentObj = config.agent || {}; 
-    
-    const keysToRemove = Object.keys(agentObj).filter(key => key.startsWith(PREFIX));
-    keysToRemove.forEach(key => delete agentObj[key]);
-    
-    config.agent = agentObj; // Reasignación segura
-    saveConfigSafely(configFile, config);
-    console.log(`✅ ${keysToRemove.length} Agentes con prefijo ${PREFIX} eliminados de opencode.json.`);
-  }
-  console.log('\n🧹 Limpieza completada. Tu OpenCode vuelve a la normalidad.\n');
-}
-
-async function uninstallAgent(agentName: string) {
-  const scope = await askScope();
-  const configFile = getConfigPath(scope);
-  const destSkillsDir = getSkillsDestDir(scope);
-  const finalAgentName = agentName.startsWith(PREFIX) ? agentName : `${PREFIX}${agentName}`;
-
-  console.log(`\n🗑️ Eliminando Agente ${finalAgentName}...\n`);
-
-  if (!fs.existsSync(configFile)) {
-    console.log('❌ No se encontró opencode.json.');
-    return;
+  const opts: CliOptions = {
+    scope: flags.has('--global') ? 'global' : flags.has('--local') ? 'local' : undefined,
+    yes: flags.has('--yes') || flags.has('-y'),
+    force: flags.has('--force'),
   }
 
-  let config: OpenCodeConfig = getOrCreateConfig(configFile);
-  
-  // Fix TS: Si no existe el agente, nos salimos
-  if (!config.agent || !config.agent[finalAgentName]) {
-    console.log(`❌ El agente ${finalAgentName} no existe en tu configuración.`);
-    return;
-  }
+  const [command, subCommand, target] = positional
+  console.log(`\n🚀 ${pkg.name} — dopando tu OpenCode...\n`)
 
-  // Fix TS: Extraemos el objeto aquí. TS ya sabe que no es undefined porque hicimos el return arriba.
-  const agentObj = config.agent;
-  const agentSkills = agentObj[finalAgentName].skills || [];
-  
-  delete agentObj[finalAgentName]; // Borramos el agente
-  saveConfigSafely(configFile, config);
-  console.log(`✅ Agente ${finalAgentName} eliminado del JSON.`);
+  const scope = await askScope(opts)
+  const paths = resolveScopePaths(scope)
+  closeRl()
 
-  // Comprobar skills huérfanas
-  const usedByOthers = getUsedMskillsSkills(config, finalAgentName);
-  let deletedSkillsCount = 0;
-
-  agentSkills.forEach(skillName => {
-    if (!usedByOthers.has(skillName)) {
-      const skillFolder = path.join(destSkillsDir, skillName);
-      if (fs.existsSync(skillFolder) && fs.statSync(skillFolder).isDirectory()) {
-        fs.rmSync(skillFolder, { recursive: true, force: true });
-        deletedSkillsCount++;
-      }
+  if (!command) {
+    await installAll(paths, opts)
+  } else if (command === 'skill') {
+    if (!subCommand) console.log('❌ Falta el nombre. Ejemplo: npx @novatic/skills skill nest-mastery')
+    else await installOneSkill(paths, subCommand, opts)
+  } else if (command === 'agent') {
+    if (!subCommand) console.log('❌ Falta el nombre. Ejemplo: npx @novatic/skills agent backend')
+    else await installOneAgent(paths, subCommand, opts)
+  } else if (command === 'uninstall') {
+    if (!subCommand || subCommand === 'all') await uninstallAll(paths)
+    else if (subCommand === 'agent') {
+      if (!target) console.log('❌ Falta el agente. Ejemplo: npx @novatic/skills uninstall agent backend')
+      else await uninstallOneAgent(paths, target)
+    } else if (subCommand === 'skill') {
+      if (!target) console.log('❌ Falta la skill. Ejemplo: npx @novatic/skills uninstall skill nest-mastery')
+      else await uninstallOneSkill(paths, target)
+    } else {
+      console.log('❌ Subcomando no reconocido. Usa: uninstall [all | agent <nombre> | skill <nombre>]')
     }
-  });
-
-  if (deletedSkillsCount > 0) console.log(`✅ ${deletedSkillsCount} Skills huérfanas eliminadas (ningún otro agente las usaba).`);
-  else console.log(`ℹ️ Las skills de este agente aún están en uso por otros agentes mskills.`);
-}
-
-async function uninstallSkill(skillName: string) {
-  const scope = await askScope();
-  const configFile = getConfigPath(scope);
-  const destSkillsDir = getSkillsDestDir(scope);
-  const finalSkillName = skillName.startsWith(PREFIX) ? skillName : `${PREFIX}${skillName}`;
-
-  console.log(`\n🗑️ Intentando eliminar Skill ${finalSkillName}...\n`);
-
-  if (fs.existsSync(configFile)) {
-    let config: OpenCodeConfig = getOrCreateConfig(configFile);
-    const usedBy = getUsedMskillsSkills(config);
-    
-    if (usedBy.has(finalSkillName)) {
-      console.log(`❌ PROHIBIDO: La skill "${finalSkillName}" está siendo usada por uno o más agentes mskills. Elimina primero esos agentes.`);
-      return;
-    }
-  }
-
-  const skillFolder = path.join(destSkillsDir, finalSkillName);
-  if (fs.existsSync(skillFolder) && fs.statSync(skillFolder).isDirectory()) {
-    fs.rmSync(skillFolder, { recursive: true, force: true });
-    console.log(`✅ Skill ${finalSkillName}/ eliminada correctamente.`);
   } else {
-    console.log(`❌ La skill ${finalSkillName}/ no existe en la carpeta.`);
+    console.log(`❌ Comando no reconocido: "${command}". Usa --help.`)
   }
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error(`\n❌ ${(error as Error).message}\n`)
+  process.exitCode = 1
+})
