@@ -54,12 +54,14 @@
     "dev": "tsx src/cli.ts",
     "build": "tsc",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm build"
   },
 
   "devDependencies": {
     "@types/node": "^25.7.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
-  }
+  },
+
+  "packageManager": "pnpm@12.4.2"
 }

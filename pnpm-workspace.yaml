@@ -1,0 +1,5 @@
+# Configuración de pnpm para este proyecto (no es un workspace).
+# `allowBuilds`: pnpm bloquea los scripts de instalación de dependencias por
+# seguridad; esbuild (vía tsx/vitest) necesita el suyo para funcionar.
+allowBuilds:
+  esbuild: true
