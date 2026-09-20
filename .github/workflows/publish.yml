@@ -1,0 +1,38 @@
+name: publish
+
+# Publica a npm con Trusted Publishing (OIDC, sin NPM_TOKEN).
+# Requiere: trusted publisher configurado en npmjs para @novatic/skills
+# (owner: novatic-cu · repo: nova-skills · workflow: publish.yml).
+#
+# Fallback manual: NPM_TOKEN como secret del repo y descomentar la env de abajo.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # para la GitHub Release del tag
+  id-token: write # OIDC para Trusted Publishing contra npm
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+
+      # Si Trusted Publishing aún no está configurado en npmjs, descomentar:
+      # env:
+      #   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: pnpm publish --access public --provenance --no-git-checks
