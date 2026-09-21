@@ -38,7 +38,7 @@
   "main": "./dist/cli.js",
 
   "bin": {
-    "nova-skills": "./dist/cli.js"
+    "nova-skills": "dist/cli.js"
   },
 
   "files": [
